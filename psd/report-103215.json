@@ -1,0 +1,62 @@
+[
+ {
+  "ok": true,
+  "fileName": "joker-test-103107.psd",
+  "chatId": "8198979766",
+  "bytes": 11124404,
+  "width": 1024,
+  "height": 1024,
+  "layerNames": [
+   "Background",
+   "chair",
+   "person",
+   "tablet",
+   "folder",
+   "paper document",
+   "pen",
+   "Text"
+  ],
+  "report": [
+   {
+    "name": "Background",
+    "status": "ok"
+   },
+   {
+    "name": "chair",
+    "status": "ok",
+    "coveredPct": 3.1
+   },
+   {
+    "name": "person",
+    "status": "ok",
+    "coveredPct": 26.7
+   },
+   {
+    "name": "tablet",
+    "status": "ok",
+    "coveredPct": 5.2
+   },
+   {
+    "name": "folder",
+    "status": "ok",
+    "coveredPct": 7.4
+   },
+   {
+    "name": "paper document",
+    "status": "ok",
+    "coveredPct": 5.1
+   },
+   {
+    "name": "pen",
+    "status": "ok",
+    "coveredPct": 0.9
+   },
+   {
+    "name": "Text",
+    "status": "ok",
+    "transparentPct": 70
+   }
+  ],
+  "ms": 15825
+ }
+]
