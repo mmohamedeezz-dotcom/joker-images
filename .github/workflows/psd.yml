@@ -1,0 +1,75 @@
+name: Build layered PSD
+on:
+  push:
+    branches: [jobs]
+    paths: ['jobs/**.json']
+permissions:
+  contents: write
+concurrency:
+  group: psd-build
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: psd-builder/package-lock.json
+      - name: ffmpeg
+        run: if grep -lqE '"motion":true|"motion_plan"' jobs/*.json 2>/dev/null; then sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg zip; fi
+      - name: Motion v2 tools
+        id: m2
+        run: if grep -lq '"motion_plan"' jobs/*.json 2>/dev/null; then echo "on=1" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-python@v5
+        if: steps.m2.outputs.on == '1'
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: psd-builder/motion2/requirements.txt
+      - name: Python deps
+        if: steps.m2.outputs.on == '1'
+        run: pip install -q -r psd-builder/motion2/requirements.txt
+      - uses: actions/cache@v4
+        if: steps.m2.outputs.on == '1'
+        with:
+          path: psd-builder/motion2/models
+          key: jm-models-v1
+      - name: Models
+        if: steps.m2.outputs.on == '1'
+        run: |
+          M=psd-builder/motion2/models; mkdir -p $M; cd $M
+          H=https://huggingface.co
+          [ -f depth.onnx ] || curl -sfL -o depth.onnx $H/onnx-community/depth-anything-v2-small/resolve/main/onnx/model.onnx
+          [ -f sam_encoder.onnx ] || curl -sfL -o sam_encoder.onnx $H/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/main/onnx/vision_encoder.onnx
+          [ -f vision_encoder.onnx_data ] || curl -sfL -o vision_encoder.onnx_data $H/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/main/onnx/vision_encoder.onnx_data
+          [ -f sam_decoder.onnx ] || curl -sfL -o sam_decoder.onnx $H/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/main/onnx/prompt_encoder_mask_decoder.onnx
+          [ -f prompt_encoder_mask_decoder.onnx_data ] || curl -sfL -o prompt_encoder_mask_decoder.onnx_data $H/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/main/onnx/prompt_encoder_mask_decoder.onnx_data
+          ls -la
+      - name: Sound library
+        if: steps.m2.outputs.on == '1'
+        run: mkdir -p psd-builder/sfxlib && gh release download motion-assets -p sfxlib.zip -D /tmp --clobber && unzip -qo /tmp/sfxlib.zip -d psd-builder/sfxlib && ls psd-builder/sfxlib | wc -l
+      - name: Install builder
+        run: cd psd-builder && npm ci --no-audit --no-fund
+      - name: Build PSD files
+        env:
+          JM_PYTHON: python3
+        run: node psd-builder/run.js
+      - name: Publish to the psd release
+        run: |
+          gh release view psd >/dev/null 2>&1 || gh release create psd --title "Joker PSD files" --notes "Layered PSD files built by the Joker bot." --latest=false
+          shopt -s nullglob
+          files=(out/*)
+          if [ ${#files[@]} -gt 0 ]; then gh release upload psd "${files[@]}" --clobber; fi
+      - name: Drop the job files from the branch
+        run: |
+          BASE=$(git rev-list --max-parents=0 HEAD | tail -1)
+          HEAD_NOW=$(git ls-remote origin refs/heads/jobs | cut -f1)
+          if [ "$HEAD_NOW" = "$GITHUB_SHA" ]; then git push -f origin "$BASE:refs/heads/jobs"; else echo "newer jobs are queued, leaving the branch"; fi
